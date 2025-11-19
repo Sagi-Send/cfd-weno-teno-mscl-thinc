@@ -12,13 +12,13 @@ problems, and related experiments.
 
 | Path | Description |
 | --- | --- |
-| `SOD/` | Baseline 1D Sod shock-tube solver that sweeps over WENO, TENO, and MUSCL-THINC reconstructions and writes solution snapshots for plotting.【F:SOD/sod.f90†L752-L821】 |
-| `SOD - Calibrate/` | Parameter-study driver that scans TENO cut-off values (`ct`) and THINC sharpness (`beta`) before writing per-run `.dat` files for calibration plots.【F:SOD - Calibrate/sod-cal.f90†L620-L780】 |
-| `SOD- Order/` | Density-wave accuracy test and grid-refinement study with WENO/TENO reconstructions and MUSCL-THINC hybridisation routines shared with the Sod solver.【F:SOD- Order/oa.f90†L200-L512】 |
+| `SOD/` | Baseline 1D Sod shock-tube solver that sweeps over WENO, TENO, and MUSCL-THINC reconstructions and writes solution snapshots for plotting. |
+| `SOD - Calibrate/` | Parameter-study driver that scans TENO cut-off values (`ct`) and THINC sharpness (`beta`) before writing per-run `.dat` files for calibration plots. |
+| `SOD- Order/` | Density-wave accuracy test and grid-refinement study with WENO/TENO reconstructions and MUSCL-THINC hybridisation routines shared with the Sod solver. |
 | `2D Shock Tube/` | Finite-volume solver and plotting utilities for planar shock-tube initial data extended to two dimensions (`st.f90`). |
 | `2D Riemann/` | Four-quadrant 2D Riemann-problem setup (`ri-six.f90`) mirroring the 1D architecture for multi-directional discontinuities. |
 | `Literature/` | PDFs of the MUSCL-THINC, TENO, and AUSM-D reference papers used to implement the numerical schemes. |
-| `*.py` | Matplotlib post-processing utilities for comparing numerical density/temperature traces against exact data and for showing convergence trends.【F:SOD/sod-plot.py†L1-L80】【F:SOD- Order/oa-plot.py†L1-L80】 |
+| `*.py` | Matplotlib post-processing utilities for comparing numerical density/temperature traces against exact data and for showing convergence trends. |
 
 Compiled `.exe` binaries and `.mod` module artifacts are checked in so you can
 inspect reference results without rebuilding, but rebuilding from source is
@@ -61,7 +61,7 @@ Key tunables:
 * `scheme` and `solver` arrays determine which reconstruction (TENO, WENO, or
   MUSCL-THINC) and which Riemann solver (currently HLLC) are used per sweep.
 * `ct` and `sharpness` configure the TENO cut-off and THINC hyperbolic-tangent
-  steepness respectively.【F:SOD/sod.f90†L752-L821】
+  steepness respectively.
 
 The solver writes one `.dat` file per scheme/solver pair along with optional
 PNG figures via `sod-plot.py`.
@@ -77,7 +77,7 @@ python ri-plot.py
 
 The `init_riemann` routine sets up the four states at the quadrant interfaces.
 You can change velocities or pressures in that subroutine to explore different
-contact configurations.【F:2D Riemann/ri-six.f90†L60-L118】
+contact configurations.
 
 ### Example: 2D Shock tube
 
@@ -90,7 +90,7 @@ python st-plot.py  # or wall-plot-1.py for boundary layers
 
 The `init_shock_tube` subroutine mirrors the 1D setup but fills the entire 2D
 mesh, while the shared modules in the same file handle flux construction and
-Runge–Kutta stepping.【F:2D Shock Tube/st.f90†L45-L120】
+Runge–Kutta stepping.
 
 ### Calibration and order-study utilities
 
@@ -100,7 +100,7 @@ Runge–Kutta stepping.【F:2D Shock Tube/st.f90†L45-L120】
 * `SOD- Order` contains a density-wave driver (`oa.f90`) plus `oa-plot.py` for
   plotting the `L1` error vs. grid spacing alongside a second-order reference
   line. Update `file_paths` in the plotter to toggle between TENO and WENO
-  datasets.【F:SOD- Order/oa-plot.py†L1-L60】
+  datasets.
 
 ## Output files
 
@@ -133,7 +133,7 @@ cross-check coefficients.
   MP5) while keeping the same finite-volume infrastructure.
 * Adjust `ApplyBoundaryConditions` for inflow/outflow variations—the 1D solver
   currently supports periodic (order test) and outflow (calibration) options in
-  separate directories, so you can copy whichever variant suits your study.【F:SOD- Order/oa.f90†L512-L620】【F:SOD - Calibrate/sod-cal.f90†L620-L666】
+  separate directories, so you can copy whichever variant suits your study.
 
 Contributions and experiment reports are welcome—open an issue describing the
 scenario and attach the `.dat` files or figures that demonstrate the behaviour
