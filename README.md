@@ -1,4 +1,3 @@
-# cfd-weno-teno-mscl-thinc
 # High-Resolution Finite-Volume Solvers for Canonical CFD Tests
 
 This repository contains a collection of Fortran 90 solvers and companion Python
