@@ -24,17 +24,6 @@ Compiled `.exe` binaries and `.mod` module artifacts are checked in so you can
 inspect reference results without rebuilding, but rebuilding from source is
 recommended whenever you modify any solver.
 
-## Requirements
-
-* **Fortran toolchain:** Any modern `gfortran` (tested with 11+) or Intel
-  compiler capable of Fortran 90 modules.
-* **Python 3.9+** with `numpy` and `matplotlib` for the plotting utilities. No
-  extra dependencies are required because the scripts rely solely on the Python
-  standard library plus those two packages.
-
-Optional: `gnuplot` or another plotting package if you prefer to use the plain
-text `.dat` files elsewhere.
-
 ## Building and running the solvers
 
 Every solver follows the same pattern: edit the problem parameters near the
