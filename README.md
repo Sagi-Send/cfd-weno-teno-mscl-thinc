@@ -121,20 +121,3 @@ The `Literature/` folder contains PDFs of the papers the implementation follows:
 * **MUSCL-THINC:** blending of monotone upstream-centered schemes with THINC
   limiters for better interface capturing.
 * **AUSMD:** source material for pressure-based flux splitting.
-
-Consult those papers when you need deeper theoretical background or want to
-cross-check coefficients.
-
-## Extending the code
-
-* Add additional Riemann solvers by implementing a new subroutine next to
-  `riemann_HLLC` and extending `riemann_solver`'s selector block.
-* Modify `activateScheme` to introduce other reconstructions (e.g., WENO-Z or
-  MP5) while keeping the same finite-volume infrastructure.
-* Adjust `ApplyBoundaryConditions` for inflow/outflow variations—the 1D solver
-  currently supports periodic (order test) and outflow (calibration) options in
-  separate directories, so you can copy whichever variant suits your study.
-
-Contributions and experiment reports are welcome—open an issue describing the
-scenario and attach the `.dat` files or figures that demonstrate the behaviour
-under investigation.
