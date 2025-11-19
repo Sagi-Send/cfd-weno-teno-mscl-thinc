@@ -6,7 +6,7 @@ classical one- and two-dimensional compressible flow benchmarks. The codebase
 implements MUSCL-THINC, WENO-JS, and TENO reconstructions, an HLLC approximate
 Riemann solver, and third-order TVD Runge–Kutta time marching to resolve strong
 shocks and contact discontinuities that arise in Sod's shock tube, 2D Riemann
-problems, and related experiments.【F:SOD/sod.f90†L276-L420】【F:SOD- Order/oa.f90†L276-L430】
+problems, and related experiments.
 
 ## Repository layout
 
