@@ -73,12 +73,16 @@ MODULE subroutines
         ! cell centers starting at h/2
         ! |---x---|---x---|.....|---x---|---x---|
         
-        do i = ng + 1, nx - ng
-            x(i) = xl + float(i-1)*dx + 0.5d0*dx
+        !$omp parallel do default(shared) private(i) schedule(static)
+        do i = 1, nx
+            x(i) = xl + REAL(i-ng-1, DP)*dx + 0.5d0*dx
         end do
-        do i = ng + 1, ny - ng
-            y(i) = yl + float(i-1)*dy + 0.5d0*dy
+        !$omp end parallel do
+        !$omp parallel do default(shared) private(i) schedule(static)
+        do i = 1, ny
+            y(i) = yl + REAL(i-ng-1, DP)*dy + 0.5d0*dy
         end do
+        !$omp end parallel do
         
     END SUBROUTINE grid
     
@@ -90,6 +94,7 @@ MODULE subroutines
         REAL(DP), INTENT(OUT)              :: rho(:,:), u_x(:,:), u_y(:,:), p(:,:)
         INTEGER                            :: i, j
         ! 2D Riemann problem
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, SIZE(x)
             DO j = 1, SIZE(y)
                 IF (x(i) <= 0.5d0 .AND. y(j) >= 0.5d0) THEN
@@ -115,6 +120,7 @@ MODULE subroutines
                 END IF
             END DO
         END DO
+        !$omp end parallel do
     END SUBROUTINE init_riemann
     
     !**************************************************************
@@ -132,6 +138,7 @@ MODULE subroutines
         ! p = (gam-1)*(E-0.5*rho*u^2)
         ! E = p/(gam-1) + 0.5*rho*u^2
         
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
             DO j = 1, ny
                 eu(i, j, 1) = rho(i, j)
@@ -140,6 +147,7 @@ MODULE subroutines
                 eu(i, j, 4) = p(i, j) * gm1i + 0.5d0 * rho(i, j) * (u_x(i, j)**2 + u_y(i, j)**2)
             END DO
         END DO
+        !$omp end parallel do
         
     END SUBROUTINE solvec
     
@@ -184,6 +192,7 @@ MODULE subroutines
         ! p = (gam-1)*(E-0.5*rho*u^2)
         ! E = p/(gam-1) + 0.5*rho*u^2
         
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
             DO j = 1, ny
                 rho(i, j) = eu(i,j,1)
@@ -193,6 +202,7 @@ MODULE subroutines
                 c(i, j)   = dsqrt(gam * p(i, j) / rho(i, j))
             END DO
         END DO
+        !$omp end parallel do
         
     END SUBROUTINE decomp
     
@@ -204,18 +214,17 @@ MODULE subroutines
         CHARACTER(LEN=4), INTENT(IN) :: solver
         REAL(DP), INTENT(OUT)        :: fh_x(:,:,:), fh_y(:,:,:)
         REAL(DP), ALLOCATABLE        :: qL_x(:,:,:), qR_x(:,:,:), qL_y(:,:,:),&
-         qR_y(:,:,:), q(:,:,:),dqL(:,:,:), dqR(:,:,:),dq(:,:,:)
+         qR_y(:,:,:), q(:,:,:)
         REAL(DP)                     :: beta(3), omega(3), cell_values(5), p_stencils(5)
-        ALLOCATE(q(nx,ny,nv),qL_x(nx,ny,nv),qR_x(nx,ny,nv), qL_y(nx,ny,nv),qR_y(nx,ny,nv), dqL(nx,ny,nv),dqR(nx,ny,nv),dq(nx,ny,nv))
+        ALLOCATE(q(nx,ny,nv),qL_x(nx,ny,nv),qR_x(nx,ny,nv), qL_y(nx,ny,nv),qR_y(nx,ny,nv))
         q(:,:,:) = 0.0_dp
         qL_x(:,:,:) = 0.0_dp
         qR_x(:,:,:) = 0.0_dp
         qL_y(:,:,:) = 0.0_dp
         qR_y(:,:,:) = 0.0_dp
-        dqL(:,:,:) = 0.0_dp
-        dqR(:,:,:) = 0.0_dp
 
         !Build primitive variables array
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
             DO j = 1, ny
                 q(i, j, 1) = rho(i, j)
@@ -224,7 +233,9 @@ MODULE subroutines
                 q(i, j, 4) = p(i, j)
             END DO
         END DO
+        !$omp end parallel do
         
+        !$omp parallel do collapse(2) default(shared) private(k,j,i,cell_values,p_stencils,beta,omega) schedule(static)
         DO k = 1, nv                ! Loop over rho, u, v and p components
             DO j = 1, ny
                 DO i = 3, nx - 3
@@ -260,7 +271,9 @@ MODULE subroutines
                 END DO    
             END DO
         END DO
+        !$omp end parallel do
 
+        !$omp parallel do collapse(2) default(shared) private(k,i,j,cell_values,p_stencils,beta,omega) schedule(static)
         DO k = 1, nv                ! Loop over rho, u, and p components
             DO i = 1, nx
                 DO j = 3, ny - 3
@@ -296,6 +309,7 @@ MODULE subroutines
                 END DO    
             END DO
         END DO
+        !$omp end parallel do
 
         ! Perform interpolation over ghost cells
         CALL ghostCellsInterpolation(qL_x, qL_y, qR_x, qR_y)
@@ -351,18 +365,17 @@ MODULE subroutines
         CHARACTER(LEN=4), INTENT(IN) :: solver
         REAL(DP), INTENT(OUT)        :: fh_x(:,:,:), fh_y(:,:,:)
         REAL(DP), ALLOCATABLE        :: qL_x(:,:,:), qR_x(:,:,:), qL_y(:,:,:),&
-         qR_y(:,:,:), q(:,:,:),dqL(:,:,:), dqR(:,:,:),dq(:,:,:)
+         qR_y(:,:,:), q(:,:,:)
         REAL(DP)                     :: beta(3), omega(3), cell_values(5), p_stencils(5)
-        ALLOCATE(q(nx,ny,nv),qL_x(nx,ny,nv),qR_x(nx,ny,nv), qL_y(nx,ny,nv),qR_y(nx,ny,nv), dqL(nx,ny,nv),dqR(nx,ny,nv),dq(nx,ny,nv))
+        ALLOCATE(q(nx,ny,nv),qL_x(nx,ny,nv),qR_x(nx,ny,nv), qL_y(nx,ny,nv),qR_y(nx,ny,nv))
         q(:,:,:) = 0.0_dp
         qL_x(:,:,:) = 0.0_dp
         qR_x(:,:,:) = 0.0_dp
         qL_y(:,:,:) = 0.0_dp
         qR_y(:,:,:) = 0.0_dp
-        dqL(:,:,:) = 0.0_dp
-        dqR(:,:,:) = 0.0_dp
 
         !Build primitive variables array
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
             DO j = 1, ny
                 q(i, j, 1) = rho(i, j)
@@ -371,7 +384,9 @@ MODULE subroutines
                 q(i, j, 4) = p(i, j)
             END DO
         END DO
+        !$omp end parallel do
         
+        !$omp parallel do collapse(2) default(shared) private(k,j,i,cell_values,p_stencils,beta,omega) schedule(static)
         DO k = 1, nv                ! Loop over rho, u, v and p components
             DO j = 1, ny
                 DO i = 3, nx - 3
@@ -407,7 +422,9 @@ MODULE subroutines
                 END DO    
             END DO
         END DO
+        !$omp end parallel do
 
+        !$omp parallel do collapse(2) default(shared) private(k,i,j,cell_values,p_stencils,beta,omega) schedule(static)
         DO k = 1, nv                ! Loop over rho, u, and p components
             DO i = 1, nx
                 DO j = 3, ny - 3
@@ -443,6 +460,7 @@ MODULE subroutines
                 END DO    
             END DO
         END DO
+        !$omp end parallel do
 
         ! Perform interpolation over ghost cells
         CALL ghostCellsInterpolation(qL_x, qL_y, qR_x, qR_y)
@@ -552,11 +570,17 @@ MODULE subroutines
         REAL(DP), ALLOCATABLE :: q(:,:,:), qL_x(:,:,:), qR_x(:,:,:), qL_y(:,:,:), qR_y(:,:,:)
       
         ALLOCATE(q(nx,ny,nv),qL_x(nx,ny,nv),qR_x(nx,ny,nv), qL_y(nx,ny,nv),qR_y(nx,ny,nv))
+        q(:,:,:) = 0.0_dp
+        qL_x(:,:,:) = 0.0_dp
+        qR_x(:,:,:) = 0.0_dp
+        qL_y(:,:,:) = 0.0_dp
+        qR_y(:,:,:) = 0.0_dp
       
         eta = 1.d0/3.d0
         eps = 1e-20
       
         !Build primitive variables array
+        !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
             DO j = 1, ny
                 q(i, j, 1) = rho(i, j)
@@ -565,8 +589,13 @@ MODULE subroutines
                 q(i, j, 4) = p(i, j)
             END DO
         END DO
+        !$omp end parallel do
       
         ! X reconstruction
+        !$omp parallel do collapse(2) default(shared) &
+        !$omp& private(k,j,i,qi,qip1,qim1,num,den,r,qLiphM,qRimhM,qLiphT,qRimhT,qLiphMT,qRimhMT) &
+        !$omp& private(qmin,delq,theta,A,B,term,dpdx,drhodx,phip,phirho,phiprho,xsiph,arg1,arg2,xi) &
+        !$omp& schedule(static)
         DO k = 1, nv
             DO j = 1, ny
                 ! Loop over each control volume
@@ -626,8 +655,13 @@ MODULE subroutines
                 END DO
             END DO
         END DO
+        !$omp end parallel do
 
         ! Y reconstruction
+        !$omp parallel do collapse(2) default(shared) &
+        !$omp& private(k,i,j,qi,qip1,qim1,num,den,r,qLiphM,qRimhM,qLiphT,qRimhT,qLiphMT,qRimhMT) &
+        !$omp& private(qmin,delq,theta,A,B,term,dpdx,drhodx,phip,phirho,phiprho,xsiph,arg1,arg2,xi) &
+        !$omp& schedule(static)
         DO k = 1, nv
             DO i = 1, nx
                 ! Loop over each control volume
@@ -687,6 +721,7 @@ MODULE subroutines
                 END DO
             END DO
         END DO
+        !$omp end parallel do
       
         qL_x(1,:,1) = qL_x(2,:,1)
         qL_x(1,:,2) = qL_x(2,:,2)
@@ -710,7 +745,7 @@ MODULE subroutines
       
     END SUBROUTINE MUSCL_THINC
 
-    REAL FUNCTION psi(arg)
+    REAL(DP) FUNCTION psi(arg)
         IMPLICIT NONE
         REAL(DP) :: arg
     
@@ -741,6 +776,12 @@ MODULE subroutines
         !========
         !X Fluxes
         !========
+        !$omp parallel do collapse(2) default(shared) &
+        !$omp& private(i,j,pR,pL,cL,cR,hL,hR,uL1,uL2,uL3,uL4,uR1,uR2,uR3,uR4) &
+        !$omp& private(fL1,fL2,fL3,fL4,fR1,fR2,fR3,fR4,SL,SR,sStar,delta_p,pStar,uL,uR,vL,vR) &
+        !$omp& private(uL_cof,uR_cof,uL_s1,uL_s2,uL_s3,uL_s4,fL_s1,fL_s2,fL_s3,fL_s4) &
+        !$omp& private(uR_s1,uR_s2,uR_s3,uR_s4,fR_s1,fR_s2,fR_s3,fR_s4) &
+        !$omp& schedule(static)
         DO i = 1, nx
             DO j=1, ny
                 uL1 = max(qL_x(i,j,1), eps)
@@ -841,10 +882,17 @@ MODULE subroutines
                 
             END DO
         END DO
+        !$omp end parallel do
         
         !========
         !Y Fluxes
         !========
+        !$omp parallel do collapse(2) default(shared) &
+        !$omp& private(i,j,pR,pL,cL,cR,hL,hR,uL1,uL2,uL3,uL4,uR1,uR2,uR3,uR4) &
+        !$omp& private(fL1,fL2,fL3,fL4,fR1,fR2,fR3,fR4,SL,SR,sStar,delta_p,pStar,uL,uR,vL,vR) &
+        !$omp& private(uL_cof,uR_cof,uL_s1,uL_s2,uL_s3,uL_s4,fL_s1,fL_s2,fL_s3,fL_s4) &
+        !$omp& private(uR_s1,uR_s2,uR_s3,uR_s4,fR_s1,fR_s2,fR_s3,fR_s4) &
+        !$omp& schedule(static)
         DO i = 1, nx
             DO j=1, ny
                 uL1 = max(qL_y(i,j,1), eps)
@@ -945,6 +993,7 @@ MODULE subroutines
                 
             END DO
         END DO
+        !$omp end parallel do
         
         
     END SUBROUTINE riemann_HLLC
@@ -1026,19 +1075,76 @@ MODULE subroutines
     END SUBROUTINE ApplyBoundaryConditions
    
     !**************************************************************
-    SUBROUTINE RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y, scheme, solver)
+    SUBROUTINE build_snapshot_paths(frame_dir, scheme, solver, nsnap, data_path, meta_path)
+        IMPLICIT NONE
+        INTEGER, INTENT(IN) :: nsnap
+        CHARACTER(LEN=*), INTENT(IN) :: frame_dir, scheme, solver
+        CHARACTER(LEN=*), INTENT(OUT) :: data_path, meta_path
+        CHARACTER(LEN=256) :: base
+
+        WRITE(base, '("rho_",A,"_",A,"_grid_",I0,"_frames_",I0)') TRIM(scheme), TRIM(solver), nx, nsnap
+        data_path = TRIM(frame_dir)//"/"//TRIM(base)//".bin"
+        meta_path = TRIM(frame_dir)//"/"//TRIM(base)//".meta"
+    END SUBROUTINE build_snapshot_paths
+
+    !**************************************************************
+    SUBROUTINE write_snapshot_meta(meta_path, scheme, solver, nsnap)
+        IMPLICIT NONE
+        INTEGER, INTENT(IN) :: nsnap
+        CHARACTER(LEN=*), INTENT(IN) :: meta_path, scheme, solver
+
+        OPEN(UNIT=19, FILE=TRIM(meta_path), STATUS="REPLACE", ACTION="WRITE", FORM="FORMATTED")
+        WRITE(19, '("scheme=",A)') TRIM(scheme)
+        WRITE(19, '("solver=",A)') TRIM(solver)
+        WRITE(19, '("nx_total=",I0)') nx
+        WRITE(19, '("ny_total=",I0)') ny
+        WRITE(19, '("nx_phys=",I0)') nx - 2*ng
+        WRITE(19, '("ny_phys=",I0)') ny - 2*ng
+        WRITE(19, '("ng=",I0)') ng
+        WRITE(19, '("nsnap=",I0)') nsnap
+        WRITE(19, '("tfinal=",ES24.16)') tfinal
+        WRITE(19, '("xl=",ES24.16)') xl
+        WRITE(19, '("xr=",ES24.16)') xr
+        WRITE(19, '("yl=",ES24.16)') yl
+        WRITE(19, '("yr=",ES24.16)') yr
+        WRITE(19, '("dtype=float64")')
+        WRITE(19, '("order=y-major")')
+        CLOSE(19)
+    END SUBROUTINE write_snapshot_meta
+
+    !**************************************************************
+    SUBROUTINE write_density_snapshot(snap_unit, rho)
+        IMPLICIT NONE
+        INTEGER, INTENT(IN) :: snap_unit
+        REAL(DP), INTENT(IN) :: rho(:,:)
+        INTEGER :: i, j
+
+        WRITE(snap_unit) ((rho(i,j), i=ng+1,nx-ng), j=ng+1,ny-ng)
+    END SUBROUTINE write_density_snapshot
+
+    !**************************************************************
+    SUBROUTINE RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y, scheme, solver, nsnap, snap_unit)
             IMPLICIT NONE
-            INTEGER i, j
+            INTEGER i, j, next_snap
+            INTEGER, INTENT(IN) :: nsnap, snap_unit
             REAL(DP)                  , INTENT(IN)    :: cfl, ct, sharpness
             CHARACTER(LEN=4)          , INTENT(IN)    :: scheme, solver
             REAL(DP), DIMENSION(:,:)  , INTENT(INOUT) :: rho, u_x, u_y, p, c
             REAL(DP), DIMENSION(:,:,:), INTENT(INOUT) :: fh_x, fh_y, eu
 
             REAL(DP), DIMENSION(:,:,:), ALLOCATABLE   :: eu0, eu1, eu2
+            REAL(DP) :: snap_dt, snap_target
             
             ALLOCATE(eu0(nx,ny,nv), eu1(nx,ny,nv), eu2(nx,ny,nv))
 
             t = 0.d0
+            next_snap = 1
+            snap_dt = 0.0_dp
+            IF (snap_unit > 0 .AND. nsnap > 0) THEN
+                IF (nsnap > 1) snap_dt = tfinal / REAL(nsnap - 1, DP)
+                CALL write_density_snapshot(snap_unit, rho)
+                next_snap = 2
+            END IF
             DO while (t<tfinal)
                 print *, "Time: ",t
                 wavespeed = maxval(SQRT(u_x**2 + u_y**2) + sqrt(gam*p/rho))
@@ -1055,13 +1161,16 @@ MODULE subroutines
                 
                 ! Stage 1
                 eu0 = eu               ! Save old solution
+                eu1 = eu0
 
                 CALL activateScheme(scheme, rho, u_x, u_y, p, fh_x, fh_y, ct, sharpness, solver)
+                !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
                 DO i = 2, nx - 1
                     DO j = 2, ny - 1
                         eu1(i,j,:) = eu0(i,j,:) - dtodx*(fh_x(i,j,:) - fh_x(i-1,j,:)) - dtody*(fh_y(i,j,:) - fh_y(i,j-1,:))
                     END DO
                 END DO
+                !$omp end parallel do
 
                 
                 ! Stage 2
@@ -1070,12 +1179,15 @@ MODULE subroutines
                 CALL solvec(rho, u_x, u_y, p, eu1)
 
                 CALL activateScheme(scheme, rho, u_x, u_y, p, fh_x, fh_y, ct, sharpness, solver)
+                eu2 = eu0
+                !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
                 DO i = 2, nx - 1
                     DO j = 2, ny - 1
                         eu2(i,j,:) = (3.0_dp/4.0_dp)*eu0(i,j,:) + (1.0_dp/4.0_dp)*&
                         (eu1(i,j,:) - dtodx*(fh_x(i,j,:) - fh_x(i-1,j,:)) - dtody*(fh_y(i,j,:) - fh_y(i,j-1,:)))
                     END DO
                 END DO
+                !$omp end parallel do
                 
                 ! Stage 3
                 CALL decomp(rho, u_x, u_y, p, eu2, c)
@@ -1083,22 +1195,38 @@ MODULE subroutines
                 CALL solvec(rho, u_x, u_y, p, eu2)
 
                 CALL activateScheme(scheme, rho, u_x, u_y, p, fh_x, fh_y, ct, sharpness, solver)
+                !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
                 DO i = 2, nx - 1
                     DO j = 2, ny - 1
                         eu(i,j,:) = (1.0_dp/3.0_dp)*eu0(i,j,:) + &
                         (2.0_dp/3.0_dp)*(eu2(i,j,:) - dtodx*(fh_x(i,j,:) - fh_x(i-1,j,:)) - dtody*(fh_y(i,j,:) - fh_y(i,j-1,:)))
                     END DO
                 END DO
+                !$omp end parallel do
                 
                 CALL decomp(rho, u_x, u_y, p, eu, c)
                 CALL ApplyBoundaryConditions(rho, u_x, u_y, p)
                 CALL solvec(rho, u_x, u_y, p, eu)
 
                 t = t + dt
+                IF (snap_unit > 0 .AND. nsnap > 1) THEN
+                    DO WHILE (next_snap <= nsnap)
+                        snap_target = REAL(next_snap - 1, DP) * snap_dt
+                        IF (t + 1.0e-12_dp < snap_target) EXIT
+                        CALL write_density_snapshot(snap_unit, rho)
+                        next_snap = next_snap + 1
+                    END DO
+                END IF
                 if (t>=tfinal) then 
                     EXIT
                 end if
             END DO
+            IF (snap_unit > 0) THEN
+                DO WHILE (next_snap <= nsnap)
+                    CALL write_density_snapshot(snap_unit, rho)
+                    next_snap = next_snap + 1
+                END DO
+            END IF
             DEALLOCATE(eu0, eu1, eu2)
     END SUBROUTINE RK3TVD
         
@@ -1160,19 +1288,64 @@ MODULE subroutines
         USE subroutines
         
         IMPLICIT NONE
-        INTEGER                         :: scheme_index, solver_index, grid_index
-        REAL(DP)                        :: cfl, ct, sharpness
-        REAL(DP), ALLOCATABLE           :: x(:), y(:), rho(:,:),u_x(:,:), u_y(:,:), p(:,:), c(:,:)
-        REAL(DP), ALLOCATABLE           :: eu(:,:,:), fh_x(:,:,:), fh_y(:,:,:)
-        INTEGER, DIMENSION(1)           :: grid_size = (/800/)
-        CHARACTER(LEN=4)  :: scheme(3) = (/"TENO", "WENO", "MUSC"/), solver(1) = (/"HLLC"/)
+        INTEGER                         :: grid_physical, nsnap, arg_count, ios
+        REAL(DP)                        :: cfl, ct, sharpness, target_tfinal
+        CHARACTER(LEN=4)                :: selected_scheme, solver
+        CHARACTER(LEN=256)              :: arg, frame_dir
         
         !Number of ghost cells
         ng = 3
+        grid_physical = 100
+        nsnap = 10
+        selected_scheme = "ALL "
+        solver = "HLLC"
+        frame_dir = "frames_preview"
+        target_tfinal = 0.5d0
 
-        DO grid_index = 1, SIZE(grid_size)
-            nx = grid_size(grid_index) + 2 * ng
-            ny = grid_size(grid_index) + 2 * ng
+        arg_count = COMMAND_ARGUMENT_COUNT()
+        IF (arg_count >= 1) THEN
+            CALL GET_COMMAND_ARGUMENT(1, arg)
+            selected_scheme = ADJUSTL(arg(1:MIN(4, LEN_TRIM(arg))))
+        END IF
+        IF (arg_count >= 2) THEN
+            CALL GET_COMMAND_ARGUMENT(2, arg)
+            READ(arg, *, IOSTAT=ios) grid_physical
+            IF (ios /= 0) STOP "Invalid grid size argument"
+        END IF
+        IF (arg_count >= 3) THEN
+            CALL GET_COMMAND_ARGUMENT(3, arg)
+            READ(arg, *, IOSTAT=ios) nsnap
+            IF (ios /= 0) STOP "Invalid snapshot count argument"
+        END IF
+        IF (arg_count >= 4) THEN
+            CALL GET_COMMAND_ARGUMENT(4, frame_dir)
+        END IF
+        IF (arg_count >= 5) THEN
+            CALL GET_COMMAND_ARGUMENT(5, arg)
+            READ(arg, *, IOSTAT=ios) target_tfinal
+            IF (ios /= 0) STOP "Invalid final time argument"
+        END IF
+
+        IF (selected_scheme == "ALL ") THEN
+            CALL run_case("TENO")
+            CALL run_case("WENO")
+            CALL run_case("MUSC")
+        ELSE
+            CALL run_case(selected_scheme)
+        END IF
+                
+    CONTAINS
+
+        SUBROUTINE run_case(scheme)
+            IMPLICIT NONE
+            CHARACTER(LEN=4), INTENT(IN) :: scheme
+            INTEGER :: snap_unit
+            CHARACTER(LEN=512) :: data_path, meta_path
+            REAL(DP), ALLOCATABLE :: x(:), y(:), rho(:,:),u_x(:,:), u_y(:,:), p(:,:), c(:,:)
+            REAL(DP), ALLOCATABLE :: eu(:,:,:), fh_x(:,:,:), fh_y(:,:,:)
+
+            nx = grid_physical + 2 * ng
+            ny = grid_physical + 2 * ng
             
             ! Physical and domain/grid parameters
             gm1 = gam-1.d0
@@ -1184,36 +1357,41 @@ MODULE subroutines
             xr = 1.0d0
             yl = -0.0d0
             yr = 1.0d0
-            dx = (xr - xl) / (nx - 1)
-            dy = (yr - yl) / (ny - 1)
+            dx = (xr - xl) / REAL(grid_physical, DP)
+            dy = (yr - yl) / REAL(grid_physical, DP)
             cfl = 0.5
-            tfinal = 0.5
+            tfinal = target_tfinal
             ct = 10.d0**(-7.d0)
             sharpness = 2.d0
 
-            ! Run TENO, WENO and MUSCL schemes.
-            DO scheme_index = 1, SIZE(scheme)
-                DO solver_index = 1, SIZE(solver)
-                    ALLOCATE(x(nx), y(ny))
-                    ! Velocities array is defined as (x value | y values)
-                    ALLOCATE(rho(nx,ny),u_x(nx,ny), u_y(nx,ny), p(nx,ny), c(nx,ny))
-                    ! Converved values array is defined as (x co. | y co. | x values | y values)
-                    ALLOCATE(eu(nx,ny,nv), fh_x(nc_x,nc_y,nv), fh_y(nc_x,nc_y,nv))
-                    
-                    CALL grid(x, y)
-                    CALL init_riemann(x, y, rho, u_x, u_y, p)
-                    CALL solvec(rho, u_x, u_y, p, eu)
-                    
-                    
-                    CALL RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y,&
-                     scheme(scheme_index), solver(solver_index))
-                    CALL output(x, y, rho, u_x, u_y, p, scheme(scheme_index), solver(solver_index))
-                    
-                    DEALLOCATE(x, y)
-                    DEALLOCATE(rho, u_x, u_y, p, c)
-                    DEALLOCATE(eu, fh_x, fh_y)
-                END DO
-            END DO
-        END DO
-                
+            ALLOCATE(x(nx), y(ny))
+            ! Velocities array is defined as (x value | y values)
+            ALLOCATE(rho(nx,ny),u_x(nx,ny), u_y(nx,ny), p(nx,ny), c(nx,ny))
+            ! Converved values array is defined as (x co. | y co. | x values | y values)
+            ALLOCATE(eu(nx,ny,nv), fh_x(nc_x,nc_y,nv), fh_y(nc_x,nc_y,nv))
+            
+            CALL grid(x, y)
+            CALL init_riemann(x, y, rho, u_x, u_y, p)
+            CALL ApplyBoundaryConditions(rho, u_x, u_y, p)
+            CALL solvec(rho, u_x, u_y, p, eu)
+            
+            snap_unit = -1
+            IF (nsnap > 0) THEN
+                CALL build_snapshot_paths(frame_dir, scheme, solver, nsnap, data_path, meta_path)
+                CALL write_snapshot_meta(meta_path, scheme, solver, nsnap)
+                snap_unit = 40
+                OPEN(UNIT=snap_unit, FILE=TRIM(data_path), STATUS="REPLACE", ACTION="WRITE", &
+                     ACCESS="STREAM", FORM="UNFORMATTED")
+            END IF
+
+            PRINT *, "Running scheme: ", scheme, " grid: ", nx, " frames: ", nsnap
+            CALL RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y, scheme, solver, nsnap, snap_unit)
+            IF (snap_unit > 0) CLOSE(snap_unit)
+            CALL output(x, y, rho, u_x, u_y, p, scheme, solver)
+            
+            DEALLOCATE(x, y)
+            DEALLOCATE(rho, u_x, u_y, p, c)
+            DEALLOCATE(eu, fh_x, fh_y)
+        END SUBROUTINE run_case
+                 
     END PROGRAM myeuler1d
