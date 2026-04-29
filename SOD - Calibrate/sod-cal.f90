@@ -56,6 +56,7 @@ MODULE subroutines
     USE types_vars
     IMPLICIT NONE
     
+    ! Shared solver state: grid sizes, thermodynamic constants, and time-step data.
     INTEGER :: nx, nc_x, ng, nv, nt, ntsteps, nf, kf
     REAL(DP) :: xl, xr, t, tfinal, dt, dx, dtodx, dxodt, gam=1.4d0, gm1, gm1i, wavespeed
     
@@ -188,6 +189,7 @@ MODULE subroutines
         dqL(:,:) = 0.0_dp
         dqR(:,:) = 0.0_dp
 
+        ! Reconstruct primitive states at cell interfaces before solving Riemann problems.
         !Build primitive variables array
         DO i = 1, nx
             q(i, 1) = rho(i)
@@ -251,6 +253,7 @@ MODULE subroutines
         d(2) = 6.d0 / 10.d0
         d(3) = 3.d0 / 10.d0
         
+        ! TENO rejects troubled substencils with a binary cutoff, then renormalizes.
         ! Initial non-linear weights
         DO stencil_i = 1,3
             gamma(stencil_i) = (1.d0 + ABS(beta(3) - beta(1)) / (eps + beta(stencil_i)))**6
@@ -291,6 +294,7 @@ MODULE subroutines
         dqL(:,:) = 0.0_dp
         dqR(:,:) = 0.0_dp
 
+        ! WENO follows the same interface-state workflow with smooth nonlinear weights.
         !Build primitive variables array
         DO i = 1, nx
             q(i, 1) = rho(i)
@@ -397,6 +401,7 @@ MODULE subroutines
         IMPLICIT NONE
         REAL(DP), DIMENSION(:,:), INTENT(INOUT)  :: qL_x, qR_x
         
+        ! Copy nearby reconstructed states into ghost interfaces for boundary fluxes.
         qL_x(2,:)     = qL_x(3,:)
         qL_x(1,:)     = qL_x(2,:)
         qR_x(2,:)     = qR_x(3,:)
@@ -433,6 +438,7 @@ MODULE subroutines
         eta = 1.d0/3.d0
         eps = 1e-20
       
+        ! MUSCL-THINC blends a monotone MUSCL slope with a sharper THINC profile.
         !Build primitive variables array
         DO i = 1, nx
             q(i, 1) = rho(i)
@@ -535,6 +541,7 @@ MODULE subroutines
         
         eps = 1.0e-6_dp
         
+        ! HLLC resolves left, contact, and right waves for each cell interface.
         DO i = 1, nx
             uL1 = max(qL_x(i,1), eps)
             uL2 = uL1 * qL_x(i,2) 
@@ -626,6 +633,7 @@ MODULE subroutines
             REAL(DP), INTENT(INOUT) :: rho(:), ux(:), p(:)
             INTEGER :: n
         
+            ! Fill ghost cells with transmissive values at both ends.
             !=============================
             ! OUTFLOW BOUNDARY CONDITIONS
             !=============================
@@ -659,6 +667,7 @@ MODULE subroutines
 
             t = 0.d0
             DO while (t<tfinal)
+                ! CFL condition ties the step size to the fastest acoustic signal.
                 print *, "Time: ",t
                 wavespeed = maxval(abs(u_x) + sqrt(gam*p/rho))
                 print *, "wavespeed: ", wavespeed, "u:", maxval(u_x), "rho: ", maxval(rho) 
@@ -670,6 +679,7 @@ MODULE subroutines
                 dtodx = dt/dx
                 dxodt = dx/dt
                 
+                ! Three TVD Runge-Kutta stages update conserved variables by flux differences.
                 ! Stage 1
                 eu0 = eu               ! Save old solution
 
@@ -754,6 +764,7 @@ MODULE subroutines
                     INTEGER         , INTENT(IN) :: ct
                     REAL(DP)        , INTENT(IN) :: x(:), rho(:), u_x(:), p(:), beta
                     
+                    ! Include the swept parameter in the filename for each calibration run.
                     IF (scheme == "MUSC") THEN
                         WRITE(filename, '(A,A,A,A,F3.1,A)') scheme,"_",solver,"_beta_", beta, ".dat"
                     ELSE IF (scheme == "TENO") THEN
@@ -778,6 +789,7 @@ MODULE subroutines
         CHARACTER(LEN=4)                    , INTENT(IN)    :: scheme, solver
 
         
+        ! Allocate, initialize, solve, write, and release one calibration case.
         ALLOCATE(x(nx), rho(nx), u_x(nx), p(nx), c(nx))
         ! Converved values array is defined as (x co. | y values)
         ALLOCATE(eu(nx, nv), fh_x(nc_x, nv))
@@ -812,6 +824,7 @@ MODULE subroutines
                 INTEGER                                 :: grid_size(1) = (/800/)
                 CHARACTER(LEN=4)                        :: scheme(1) = (/"TENO"/), solver(1) = (/"HLLC"/)
                 
+                ! Driver for the Sod parameter sweep used to tune TENO and MUSCL-THINC.
                 !Number of ghost cells
                 ng = 3
 

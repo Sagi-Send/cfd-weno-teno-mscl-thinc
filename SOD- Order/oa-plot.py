@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Plot the order-analysis error curve for the transported density wave.
 # File paths
 file_paths = [
      "TENO.dat"
@@ -9,6 +10,7 @@ file_paths = [
 
 # Function to read data without pandas
 def read_file(file_path):
+    # Output files store grid size and L1 error as whitespace-delimited columns.
     with open(file_path, 'r') as file:
         lines = file.readlines()
         data = [list(map(float, line.split())) for line in lines]
@@ -16,6 +18,7 @@ def read_file(file_path):
 
 
 def exact_solution(x_exact, t=2.0, u=0.1):
+    # Periodic density wave translated by constant velocity u.
     return 1 + 0.98 * np.sin(2 * np.pi * (x_exact - u * t))
 
 
@@ -76,6 +79,7 @@ h_ref = h[-1]      # choose the last h
 l1_ref = l1[-1]    # corresponding L1 norm
 slope = 2.0        # second-order slope
 
+# Scale the reference line so it passes through the selected data point.
 # In log-log space: log(L1) = log(C) + slope*log(h)
 # => L1 = C * h^slope
 # We solve for C: C = l1_ref / (h_ref^slope)

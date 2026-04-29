@@ -4,6 +4,7 @@ import numpy as np
 from scipy.interpolate import griddata
 import multiprocessing
 
+# Same post-processing as st-plot.py, focused on the t=0.6 output files.
 # File paths: modify this array as needed.
 file_paths = [
     "TENO_HLLC_grid_610_Re_ 200.00_0.6_.dat",
@@ -27,6 +28,7 @@ y_threshold = 0
 # --- Group files by Reynolds number ---
 groups = {}
 for fp in file_paths:
+    # File names encode Re, so grouping here controls subplot rows.
     m = re.search(r"Re_\s*([\d\.]+)", fp)
     if m:
         re_val = m.group(1).rstrip('.')  # Remove trailing period if present.
@@ -49,6 +51,7 @@ for row_idx, re_val in enumerate(sorted_re_keys):
         tasks.append((row_idx, col_idx, fp))
 
 def read_file(file_path):
+    # Solver output is stored as whitespace-delimited numeric columns.
     with open(file_path, 'r') as file:
         lines = file.readlines()
         data = [list(map(float, line.split())) for line in lines]
@@ -78,6 +81,7 @@ def piecewise_interpolation(x, y, values, Xi, Yi, threshold=0.03):
     return Di
 
 def process_subplot(args):
+    # Worker for multiprocessing: interpolate density and return its gradient.
     row, col, fp = args
     data = read_file(fp)
     x, y, density, temp = data[0], data[1], data[2], data[3]
@@ -90,6 +94,7 @@ def process_subplot(args):
     return row, col, grad_mag, fp
 
 def process_subplot_temp(args):
+    # Worker for multiprocessing: interpolate temperature on the plotting grid.
     row, col, fp = args
     data = read_file(fp)
     x, y, density, temp = data[0], data[1], data[2], data[3]
@@ -99,6 +104,7 @@ def process_subplot_temp(args):
     return row, col, temp_field, fp
 
 if __name__ == '__main__':
+    # Main guard is required because multiprocessing spawns child processes on Windows.
     # ----------------- Density Gradient Plot -----------------
     fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows))
     fig.suptitle("2D Viscous Shock Tube: Density Gradient Distribution at "+r"$t=0.6$",

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Plot numerical Sod shock-tube density against the exact reference solution.
 # Load the data from the file
 file_path = 'SodShockTube.dat'
 data = np.loadtxt(file_path, skiprows=1)
@@ -22,6 +23,7 @@ file_paths = [
 
 # Function to read data without pandas
 def read_file(file_path):
+    # Solver files are whitespace-delimited columns: x, rho, u, p.
     with open(file_path, 'r') as file:
         lines = file.readlines()
         data = [list(map(float, line.split())) for line in lines]
@@ -37,6 +39,7 @@ ax_main = plt.subplot2grid((2, 2), (0, 0), rowspan=2)
 for file_path in file_paths:
     x, y, *_ = read_file(file_path)
     grid_size = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
+    # Assign stable labels and line styles for side-by-side scheme comparison.
     if grid_size == 'WENO':
         grid_size = 'WENO-JS'
         linest = "--"
@@ -61,6 +64,7 @@ for file_path in file_paths:
     x, y, *_ = read_file(file_path)
     grid_size = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
     solver = file_path.split('_')[1].replace('.dat', '').strip()
+    # Repeat the same style mapping for the discontinuity zoom.
     if grid_size == 'WENO':
         grid_size = 'WENO-JS'
         linest="--"
@@ -85,6 +89,7 @@ for file_path in file_paths:
     x, y, *_ = read_file(file_path)
     grid_size = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
     solver = file_path.split('_')[1].replace('.dat', '').strip()
+    # Repeat the same style mapping for the shock zoom.
     if grid_size == 'WENO':
         grid_size = 'WENO-JS'
         linest="--"
