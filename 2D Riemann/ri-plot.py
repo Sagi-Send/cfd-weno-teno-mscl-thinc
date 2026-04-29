@@ -5,6 +5,7 @@ import matplotlib.ticker as ticker
 import matplotlib.gridspec as gridspec
 import gc
 
+# Plot one or more 2D Riemann density fields from solver output files.
 plt.close('all')  # Close previous figures
 gc.collect()  # Force garbage collection
 
@@ -17,6 +18,7 @@ file_paths = [
 
 # Function to read data without pandas
 def read_file(file_path):
+    # Solver files are whitespace-delimited columns: x, y, rho, ux, uy, p.
     with open(file_path, 'r') as file:
         lines = file.readlines()
         data = [list(map(float, line.split())) for line in lines]
@@ -35,6 +37,7 @@ for i, file_path in enumerate(file_paths):
     x, y, density, *_ = read_file(file_path)
     grid_size = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
 
+    # Map compact file prefixes to report-ready scheme names.
     if grid_size == 'WENO':
         grid_size = 'WENO-JS'
     elif grid_size == "MUSC":
@@ -50,6 +53,7 @@ for i, file_path in enumerate(file_paths):
     # Interpolate density data onto the grid
     Di = griddata((x, y), density, (Xi, Yi), method='cubic')
 
+    # Draw the density field with a grayscale palette matching the paper figures.
     # Plot filled contour in grayscale
     contour = ax.contourf(Xi, Yi, Di, levels=1000, cmap='gray')
 

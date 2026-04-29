@@ -56,6 +56,7 @@ MODULE subroutines
     USE types_vars
     IMPLICIT NONE
     
+    ! Shared solver state for the viscous shock-tube case.
     INTEGER     :: nx, ny, nc_x, nc_y, ng, nv, nt, ntsteps, nf, kf
     REAL(DP)    :: xl, xr, yl, yr, t, tfinal, dt, dx, dy, dtodx, dxodt, dtody, dyodt, gam=1.4d0, gm1, gm1i, wavespeed
     REAL(DP)    :: Mach, Pr, cp, ka, Re, mu, R
@@ -209,6 +210,7 @@ MODULE subroutines
         dqL(:,:,:) = 0.0_dp
         dqR(:,:,:) = 0.0_dp
 
+        ! Reconstruct x- and y-face primitive states before solving Riemann problems.
         !Build primitive variables array
         DO i = 1, nx
             DO j = 1, ny
@@ -313,6 +315,7 @@ MODULE subroutines
         d(2) = 6.d0 / 10.d0
         d(3) = 3.d0 / 10.d0
         
+        ! TENO rejects troubled substencils with a binary cutoff, then renormalizes.
         ! Initial non-linear weights
         DO stencil_i = 1,3
             gamma(stencil_i) = (1.d0 + ABS(beta(3) - beta(1)) / (eps + beta(stencil_i)))**6
@@ -356,6 +359,7 @@ MODULE subroutines
         dqL(:,:,:) = 0.0_dp
         dqR(:,:,:) = 0.0_dp
 
+        ! WENO follows the same interface-state workflow with smooth nonlinear weights.
         !Build primitive variables array
         DO i = 1, nx
             DO j = 1, ny
@@ -503,6 +507,7 @@ MODULE subroutines
         IMPLICIT NONE
         REAL(DP), DIMENSION(:,:,:), INTENT(INOUT)  :: qL_x, qL_y, qR_x, qR_y
         
+        ! Copy nearby reconstructed states into ghost interfaces for WENO/TENO fluxes.
         qL_x(2,:,:)     = qL_x(3,:,:)
         qL_x(1,:,:)     = qL_x(2,:,:)
         qR_x(2,:,:)     = qR_x(3,:,:)
@@ -532,6 +537,7 @@ MODULE subroutines
         IMPLICIT NONE
         REAL(DP), DIMENSION(:,:,:), INTENT(INOUT)  :: qL_x, qL_y, qR_x, qR_y
         
+        ! MUSCL-THINC needs fewer filled interface layers than the five-point schemes.
         qL_x(1,:,:) = qL_x(2,:,:)
         qL_x(nx,:,:) = qL_x(nx-1,:,:)
 
@@ -569,6 +575,7 @@ MODULE subroutines
         eta = 1.d0/3.d0
         eps = 1e-20
       
+        ! MUSCL-THINC blends a monotone MUSCL slope with a sharper THINC profile.
         !Build primitive variables array
         DO i = 1, nx
             DO j = 1, ny
@@ -736,6 +743,7 @@ MODULE subroutines
         
         eps = 1.0e-6_dp
         
+        ! HLLC resolves left, contact, and right waves on each x and y face.
         !========
         !X Fluxes
         !========
@@ -954,6 +962,7 @@ MODULE subroutines
         INTEGER :: i, j, n, m
         REAL(DP), PARAMETER :: EPSILON = 1.0E-12_DP
       
+        ! Reflective wall conditions fill ghost cells around the viscous shock tube.
         ! Left boundary (x = 1)
 
         DO j = 1, ny
@@ -1037,6 +1046,7 @@ MODULE subroutines
         REAL(DP), ALLOCATABLE :: qx_L(:,:), qy_L(:,:), qx_R(:,:), qy_R(:,:)
         REAL(DP) :: u_L, u_R, v_L, v_R
     
+        ! Viscous fluxes are built from stresses and heat fluxes at cell faces.
         ALLOCATE(Fvx_L(nx,ny,nv), Fvx_R(nx,ny,nv), Fvy_L(nx,ny,nv), Fvy_R(nx,ny,nv))
         ALLOCATE(Tau_xx_L(nx,ny), Tau_yy_L(nx,ny), Tau_xy_L(nx,ny),Tau_yx_L(nx,ny))
         ALLOCATE(Tau_xx_R(nx,ny), Tau_yy_R(nx,ny), Tau_xy_R(nx,ny),Tau_yx_R(nx,ny))
@@ -1140,6 +1150,7 @@ MODULE subroutines
         REAL(DP) :: dudx(nx,ny), dvdy(nx,ny), dudy(nx,ny), dvdx(nx,ny)
         INTEGER :: i, j
 
+        ! Velocity gradients feed the Newtonian stress tensor at staggered faces.
         Tau_xx_L(:,:) = 0.0_dp
         Tau_xx_R(:,:) = 0.0_dp
         Tau_yy_L(:,:) = 0.0_dp
@@ -1301,6 +1312,7 @@ MODULE subroutines
         REAL(DP) :: dTdx_L(nx,ny), dTdx_R(nx,ny), dTdy_L(nx,ny), dTdy_R(nx,ny)
         INTEGER :: i, j
     
+        ! Fourier heat fluxes are evaluated on the same staggered faces as stresses.
         ! Initialize arrays
         qx_L(:,:) = 0.0_dp
         qx_R(:,:) = 0.0_dp
@@ -1382,6 +1394,7 @@ MODULE subroutines
         ALLOCATE(eu0(nx,ny,nv), eu1(nx,ny,nv), eu2(nx,ny,nv))
 
         t = 0.d0
+        ! RK3 advances the inviscid fluxes and adds viscous/heat terms each stage.
         ! Count time steps for printing
         state_count = 0
         DO while (t<tfinal)
@@ -1401,6 +1414,7 @@ MODULE subroutines
             dtody = dt/dy
             dyodt = dy/dt
             
+            ! Three TVD Runge-Kutta stages update conserved variables by flux differences.
             ! Stage 1
             eu0 = eu               ! Save old solution
             CALL activateScheme(scheme, rho, u_x, u_y, p, fh_x, fh_y, ct, sharpness, solver)
@@ -1496,6 +1510,7 @@ MODULE subroutines
         CHARACTER(LEN=4), INTENT(IN) :: scheme, solver
         REAL(DP)        , INTENT(IN) :: x(:), y(:), rho(:,:), u_x(:,:), u_y(:,:), p(:,:), Temp(:,:), Re
         
+        ! One output file is written per scheme and Reynolds number.
         WRITE(filename, '(A,A,A,A,I0,A,F7.2,A,A)') scheme,"_",solver,"_grid_", nx, "_Re_", Re,"_0.6_",".dat"
         OPEN(UNIT=18, FILE=TRIM(filename), STATUS="REPLACE", ACTION="WRITE", FORM="FORMATTED")
         DO i = 1, nx
@@ -1538,6 +1553,7 @@ MODULE subroutines
                 CHARACTER(LEN=4)                        :: scheme(3) = (/"WENO", "MUSC", "TENO"/), solver(1) = (/"HLLC"/)
 
                 
+                ! Driver for the 2D viscous shock tube comparison.
                 ! Run TENO, WENO and MUSCL schemes.
                 DO Re_index = 1, SIZE(Res)
                     Re = Res(Re_index)

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Compare parameter sweeps for TENO cut-off and MUSCL-THINC sharpness.
 # Load the data from the file
 file_path = 'SodShockTube.dat'
 data = np.loadtxt(file_path, skiprows=1)
@@ -27,6 +28,7 @@ file_paths = [
 linestyles=[":", "--", "-.", "-"]
 # Function to read data without pandas
 def read_file(file_path):
+    # Solver files are whitespace-delimited columns: x, rho, u, p.
     with open(file_path, 'r') as file:
         lines = file.readlines()
         data = [list(map(float, line.split())) for line in lines]
@@ -46,6 +48,7 @@ for file_path in file_paths:
     x, y, *_ = read_file(file_path)
     scheme = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
     if scheme == "MUSC":
+        # beta is encoded in the fourth underscore-separated token.
         param = file_path.split('_')[3].replace('.dat', '').strip()  # Extract grid size
         ax_zoom1.plot(x, y, label=r"$\beta$="+param, linewidth=0.8, marker=markers[count], markersize=4, linestyle=linestyles[count])
         count += 1
@@ -98,6 +101,7 @@ for file_path in file_paths:
     x, y, *_ = read_file(file_path)
     scheme = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
     if scheme == "TENO":
+        # ct exponent is encoded in the fourth underscore-separated token.
         param = file_path.split('_')[3].replace('.dat', '').strip()  # Extract grid size
         if param == "-5":
             param = "-7"

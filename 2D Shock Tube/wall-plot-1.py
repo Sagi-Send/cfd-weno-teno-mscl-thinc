@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Compare bottom-wall density traces against a digitized reference curve.
 # File paths
 file_paths = [
      "TENO_HLLC_grid_610_Re_ 200.00.dat",
@@ -13,6 +14,7 @@ file_path_reference = "reference4.csv"
 
 # Function to read data without pandas
 def read_file(file_path):
+    # Accept both solver whitespace output and comma-separated reference data.
     with open(file_path, 'r') as file:
         lines = file.readlines()
 
@@ -41,6 +43,7 @@ for file_path in file_paths:
     data = read_file(file_path)
     x, y, density = data[0], data[1], data[2]
 
+    # Convert file prefixes to readable legend labels and consistent line styles.
     scheme = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
     if scheme == 'WENO':
         scheme = 'WENO-JS'
@@ -55,6 +58,7 @@ for file_path in file_paths:
     x_plot = []
     rho_plot = []
 
+    # Pull out a near-wall horizontal slice from the 2D cloud.
     # y_target = 0.0505
     y_target = 0.0079
     tolerance = 1e-3  # Adjusted for accuracy

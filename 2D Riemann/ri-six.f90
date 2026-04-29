@@ -56,7 +56,9 @@ MODULE subroutines
     USE types_vars
     IMPLICIT NONE
     
+    ! Shared solver state: grid sizes, boundary mode, constants, and time-step data.
     INTEGER :: nx, ny, nc_x, nc_y, ng, nv, nt, ntsteps, nf, kf
+    CHARACTER(LEN=4) :: bc_mode = "REFL"
     REAL(DP) :: xl, xr, yl, yr, t, tfinal, dt, dx, dy, dtodx, dxodt, dtody, dyodt, gam=1.4d0, gm1, gm1i, wavespeed
     
     CONTAINS
@@ -223,6 +225,7 @@ MODULE subroutines
         qL_y(:,:,:) = 0.0_dp
         qR_y(:,:,:) = 0.0_dp
 
+        ! Reconstruct x- and y-face primitive states before solving Riemann problems.
         !Build primitive variables array
         !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
@@ -333,6 +336,7 @@ MODULE subroutines
         d(2) = 6.d0 / 10.d0
         d(3) = 3.d0 / 10.d0
         
+        ! TENO rejects troubled substencils with a binary cutoff, then renormalizes.
         ! Initial non-linear weights
         DO stencil_i = 1,3
             gamma(stencil_i) = (1.d0 + ABS(beta(3) - beta(1)) / (eps + beta(stencil_i)))**6
@@ -374,6 +378,7 @@ MODULE subroutines
         qL_y(:,:,:) = 0.0_dp
         qR_y(:,:,:) = 0.0_dp
 
+        ! WENO follows the same interface-state workflow with smooth nonlinear weights.
         !Build primitive variables array
         !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
@@ -527,6 +532,7 @@ MODULE subroutines
         IMPLICIT NONE
         REAL(DP), DIMENSION(:,:,:), INTENT(INOUT)  :: qL_x, qL_y, qR_x, qR_y
         
+        ! Copy nearby reconstructed states into ghost interfaces for boundary fluxes.
         qL_x(2,:,:)     = qL_x(3,:,:)
         qL_x(1,:,:)     = qL_x(2,:,:)
         qR_x(2,:,:)     = qR_x(3,:,:)
@@ -579,6 +585,7 @@ MODULE subroutines
         eta = 1.d0/3.d0
         eps = 1e-20
       
+        ! MUSCL-THINC blends a monotone MUSCL slope with a sharper THINC profile.
         !Build primitive variables array
         !$omp parallel do collapse(2) default(shared) private(i,j) schedule(static)
         DO i = 1, nx
@@ -773,6 +780,7 @@ MODULE subroutines
         
         eps = 1.0e-6_dp
         
+        ! HLLC resolves left, contact, and right waves on each x and y face.
         !========
         !X Fluxes
         !========
@@ -1002,73 +1010,150 @@ MODULE subroutines
     SUBROUTINE ApplyBoundaryConditions(rho, ux, uy, p)
             IMPLICIT NONE
             REAL(DP), INTENT(INOUT) :: rho(:,:), ux(:,:), uy(:,:), p(:,:)
-            INTEGER :: i, j,n
+            INTEGER :: i, j, n, src_i, src_j
+
+            ! Boundary mode is chosen from the command line for comparison runs.
+            IF (bc_mode == "OUTF") THEN
+                ! Zero-gradient outflow boundary conditions.
+                DO j = 1, ny
+                  DO n = 0, ng-1
+                    rho(1+n, j) = rho(ng+1, j)
+                    ux(1+n, j) = ux(ng+1, j)
+                    uy(1+n, j) = uy(ng+1, j)
+                    p(1+n, j) = p(ng+1, j)
+                  END DO
+                END DO
+
+                DO j = 1, ny
+                  DO n = 0, ng-1
+                    rho(nx-n, j) = rho(nx-ng, j)
+                    ux(nx-n, j) = ux(nx-ng, j)
+                    uy(nx-n, j) = uy(nx-ng, j)
+                    p(nx-n, j) = p(nx-ng, j)
+                  END DO
+                END DO
+
+                DO i = 1, nx
+                  DO n = 0, ng-1
+                    rho(i, 1+n) = rho(i, ng+1)
+                    ux(i, 1+n) = ux(i, ng+1)
+                    uy(i, 1+n) = uy(i, ng+1)
+                    p(i, 1+n) = p(i, ng+1)
+                  END DO
+                END DO
+
+                DO i = 1, nx
+                  DO n = 0, ng-1
+                    rho(i, ny-n) = rho(i, ny-ng)
+                    ux(i, ny-n) = ux(i, ny-ng)
+                    uy(i, ny-n) = uy(i, ny-ng)
+                    p(i, ny-n) = p(i, ny-ng)
+                  END DO
+                END DO
+
+                DO i = 1, ng
+                  DO j = 1, ng
+                    rho(i, j) = rho(ng, ng)
+                    ux(i, j) = ux(ng, ng)
+                    uy(i, j) = uy(ng, ng)
+                    p(i, j) = p(ng, ng)
+
+                    rho(nx+1-i, j) = rho(nx-ng, ng)
+                    ux(nx+1-i, j) = ux(nx-ng, ng)
+                    uy(nx+1-i, j) = uy(nx-ng, ng)
+                    p(nx+1-i, j) = p(nx-ng, ng)
+
+                    rho(i, ny+1-j) = rho(ng, ny-ng)
+                    ux(i, ny+1-j) = ux(ng, ny-ng)
+                    uy(i, ny+1-j) = uy(ng, ny-ng)
+                    p(i, ny+1-j) = p(ng, ny-ng)
+
+                    rho(nx+1-i, ny+1-j) = rho(nx-ng, ny-ng)
+                    ux(nx+1-i, ny+1-j) = ux(nx-ng, ny-ng)
+                    uy(nx+1-i, ny+1-j) = uy(nx-ng, ny-ng)
+                    p(nx+1-i, ny+1-j) = p(nx-ng, ny-ng)
+                  END DO
+                END DO
+                RETURN
+            END IF
         
             !=============================
-            ! OUTFLOW BOUNDARY CONDITIONS
+            ! REFLECTING SLIP-WALL BOUNDARY CONDITIONS
             !=============================
-            ! Left boundary (x = 1)
-            DO j = 1, ny
-              DO n = 0, ng-1
-                rho(1+n, j) = rho(ng+1, j)
-                ux(1+n, j) = ux(ng+1, j)
-                uy(1+n, j) = uy(ng+1, j)
-                p(1+n, j) = p(ng+1, j)
+            ! Left boundary
+            DO j = ng + 1, ny - ng
+              DO n = 1, ng
+                src_i = ng + n
+                rho(ng+1-n, j) = rho(src_i, j)
+                ux(ng+1-n, j) = -ux(src_i, j)
+                uy(ng+1-n, j) = uy(src_i, j)
+                p(ng+1-n, j) = p(src_i, j)
               END DO
             END DO
         
-            ! Right boundary (x = nx)
-            DO j = 1, ny
-              DO n = 0, ng-1
-                rho(nx-n, j) = rho(nx-ng, j)
-                ux(nx-n, j) = ux(nx-ng, j)
-                uy(nx-n, j) = uy(nx-ng, j)
-                p(nx-n, j) = p(nx-ng, j)
+            ! Right boundary
+            DO j = ng + 1, ny - ng
+              DO n = 1, ng
+                src_i = nx - ng + 1 - n
+                rho(nx-ng+n, j) = rho(src_i, j)
+                ux(nx-ng+n, j) = -ux(src_i, j)
+                uy(nx-ng+n, j) = uy(src_i, j)
+                p(nx-ng+n, j) = p(src_i, j)
               END DO
             END DO
         
-            ! Bottom boundary (y = 1)
-            DO i = 1, nx
-              DO n = 0, ng-1
-                rho(i, 1+n) = rho(i, ng+1)
-                ux(i, 1+n) = ux(i, ng+1)
-                uy(i, 1+n) = uy(i, ng+1)
-                p(i, 1+n) = p(i, ng+1)
+            ! Bottom boundary
+            DO i = ng + 1, nx - ng
+              DO n = 1, ng
+                src_j = ng + n
+                rho(i, ng+1-n) = rho(i, src_j)
+                ux(i, ng+1-n) = ux(i, src_j)
+                uy(i, ng+1-n) = -uy(i, src_j)
+                p(i, ng+1-n) = p(i, src_j)
               END DO
             END DO
         
-            ! Top boundary (y = ny)
-            DO i = 1, nx
-              DO n = 0, ng-1
-                rho(i, ny-n) = rho(i, ny-ng)
-                ux(i, ny-n) = ux(i, ny-ng)
-                uy(i, ny-n) = uy(i, ny-ng)
-                p(i, ny-n) = p(i, ny-ng)
+            ! Top boundary
+            DO i = ng + 1, nx - ng
+              DO n = 1, ng
+                src_j = ny - ng + 1 - n
+                rho(i, ny-ng+n) = rho(i, src_j)
+                ux(i, ny-ng+n) = ux(i, src_j)
+                uy(i, ny-ng+n) = -uy(i, src_j)
+                p(i, ny-ng+n) = p(i, src_j)
               END DO
             END DO
         
-            ! Corners
+            ! Corners mirror across both walls, so both velocity components flip.
             DO i = 1, ng
               DO j = 1, ng
-                rho(i, j) = rho(ng, ng)
-                ux(i, j) = ux(ng, ng)
-                uy(i, j) = uy(ng, ng)
-                p(i, j) = p(ng, ng)
-    
-                rho(nx+1-i, j) = rho(nx-ng, ng)
-                ux(nx+1-i, j) = ux(nx-ng, ng)
-                uy(nx+1-i, j) = uy(nx-ng, ng)
-                p(nx+1-i, j) = p(nx-ng, ng)
-    
-                rho(i, ny+1-j) = rho(ng, ny-ng)
-                ux(i, ny+1-j) = ux(ng, ny-ng)
-                uy(i, ny+1-j) = uy(ng, ny-ng)
-                p(i, ny+1-j) = p(ng, ny-ng)
-    
-                rho(nx+1-i, ny+1-j) = rho(nx-ng, ny-ng)
-                ux(nx+1-i, ny+1-j) = ux(nx-ng, ny-ng)
-                uy(nx+1-i, ny+1-j) = uy(nx-ng, ny-ng)
-                p(nx+1-i, ny+1-j) = p(nx-ng, ny-ng)
+                src_i = ng + 1 + i - 1
+                src_j = ng + 1 + j - 1
+                rho(ng+1-i, ng+1-j) = rho(src_i, src_j)
+                ux(ng+1-i, ng+1-j) = -ux(src_i, src_j)
+                uy(ng+1-i, ng+1-j) = -uy(src_i, src_j)
+                p(ng+1-i, ng+1-j) = p(src_i, src_j)
+
+                src_i = nx - ng + 1 - i
+                src_j = ng + 1 + j - 1
+                rho(nx-ng+i, ng+1-j) = rho(src_i, src_j)
+                ux(nx-ng+i, ng+1-j) = -ux(src_i, src_j)
+                uy(nx-ng+i, ng+1-j) = -uy(src_i, src_j)
+                p(nx-ng+i, ng+1-j) = p(src_i, src_j)
+
+                src_i = ng + 1 + i - 1
+                src_j = ny - ng + 1 - j
+                rho(ng+1-i, ny-ng+j) = rho(src_i, src_j)
+                ux(ng+1-i, ny-ng+j) = -ux(src_i, src_j)
+                uy(ng+1-i, ny-ng+j) = -uy(src_i, src_j)
+                p(ng+1-i, ny-ng+j) = p(src_i, src_j)
+
+                src_i = nx - ng + 1 - i
+                src_j = ny - ng + 1 - j
+                rho(nx-ng+i, ny-ng+j) = rho(src_i, src_j)
+                ux(nx-ng+i, ny-ng+j) = -ux(src_i, src_j)
+                uy(nx-ng+i, ny-ng+j) = -uy(src_i, src_j)
+                p(nx-ng+i, ny-ng+j) = p(src_i, src_j)
               END DO
             END DO
             
@@ -1082,6 +1167,7 @@ MODULE subroutines
         CHARACTER(LEN=*), INTENT(OUT) :: data_path, meta_path
         CHARACTER(LEN=256) :: base
 
+        ! Keep snapshot names consistent with ri-animate.py.
         WRITE(base, '("rho_",A,"_",A,"_grid_",I0,"_frames_",I0)') TRIM(scheme), TRIM(solver), nx, nsnap
         data_path = TRIM(frame_dir)//"/"//TRIM(base)//".bin"
         meta_path = TRIM(frame_dir)//"/"//TRIM(base)//".meta"
@@ -1096,6 +1182,7 @@ MODULE subroutines
         OPEN(UNIT=19, FILE=TRIM(meta_path), STATUS="REPLACE", ACTION="WRITE", FORM="FORMATTED")
         WRITE(19, '("scheme=",A)') TRIM(scheme)
         WRITE(19, '("solver=",A)') TRIM(solver)
+        WRITE(19, '("bc_mode=",A)') TRIM(bc_mode)
         WRITE(19, '("nx_total=",I0)') nx
         WRITE(19, '("ny_total=",I0)') ny
         WRITE(19, '("nx_phys=",I0)') nx - 2*ng
@@ -1119,13 +1206,14 @@ MODULE subroutines
         REAL(DP), INTENT(IN) :: rho(:,:)
         INTEGER :: i, j
 
+        ! Write only the physical domain, excluding ghost cells, in y-major order.
         WRITE(snap_unit) ((rho(i,j), i=ng+1,nx-ng), j=ng+1,ny-ng)
     END SUBROUTINE write_density_snapshot
 
     !**************************************************************
     SUBROUTINE RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y, scheme, solver, nsnap, snap_unit)
             IMPLICIT NONE
-            INTEGER i, j, next_snap
+            INTEGER i, j, next_snap, step_count
             INTEGER, INTENT(IN) :: nsnap, snap_unit
             REAL(DP)                  , INTENT(IN)    :: cfl, ct, sharpness
             CHARACTER(LEN=4)          , INTENT(IN)    :: scheme, solver
@@ -1138,17 +1226,21 @@ MODULE subroutines
             ALLOCATE(eu0(nx,ny,nv), eu1(nx,ny,nv), eu2(nx,ny,nv))
 
             t = 0.d0
+            step_count = 0
             next_snap = 1
             snap_dt = 0.0_dp
             IF (snap_unit > 0 .AND. nsnap > 0) THEN
+                ! Save the initial state, then emit later frames as time crosses targets.
                 IF (nsnap > 1) snap_dt = tfinal / REAL(nsnap - 1, DP)
                 CALL write_density_snapshot(snap_unit, rho)
                 next_snap = 2
             END IF
             DO while (t<tfinal)
-                print *, "Time: ",t
+                ! CFL condition uses the fastest 2D acoustic signal in the domain.
                 wavespeed = maxval(SQRT(u_x**2 + u_y**2) + sqrt(gam*p/rho))
-                print *, "wavespeed: ", wavespeed, "u:", maxval(u_x),"v:", maxval(u_y), "rho: ", maxval(rho) 
+                IF (MOD(step_count, 100) == 0) THEN
+                    print *, "Step: ", step_count, " Time: ", t, " wavespeed: ", wavespeed
+                END IF
                 dt = cfl * MIN(dx, dy) / abs(wavespeed)
                 
                 if(t+dt > tfinal) then
@@ -1159,6 +1251,7 @@ MODULE subroutines
                 dtody = dt/dy
                 dyodt = dy/dt
                 
+                ! Three TVD Runge-Kutta stages update conserved variables by flux differences.
                 ! Stage 1
                 eu0 = eu               ! Save old solution
                 eu1 = eu0
@@ -1209,7 +1302,9 @@ MODULE subroutines
                 CALL solvec(rho, u_x, u_y, p, eu)
 
                 t = t + dt
+                step_count = step_count + 1
                 IF (snap_unit > 0 .AND. nsnap > 1) THEN
+                    ! Multiple snapshots may be due after one large time step.
                     DO WHILE (next_snap <= nsnap)
                         snap_target = REAL(next_snap - 1, DP) * snap_dt
                         IF (t + 1.0e-12_dp < snap_target) EXIT
@@ -1270,7 +1365,8 @@ MODULE subroutines
                     CHARACTER(LEN=4), INTENT(IN) :: scheme, solver
                     REAL(DP)        , INTENT(IN) :: x(:), y(:), rho(:,:), u_x(:,:), u_y(:,:), p(:,:)
                     
-                    WRITE(filename, '(A,A,A,A,I0,A)') scheme,"_",solver,"_grid_", nx, ".dat"
+                    ! Write the final field with the boundary mode in the filename.
+                    WRITE(filename, '(A,A,A,A,A,A,I0,A)') scheme,"_",solver,"_",bc_mode,"_grid_", nx, ".dat"
                     OPEN(UNIT=18, FILE=TRIM(filename), STATUS="REPLACE", ACTION="WRITE", FORM="FORMATTED")
                     DO i = 1, nx
                         DO j = 1, ny
@@ -1293,6 +1389,7 @@ MODULE subroutines
         CHARACTER(LEN=4)                :: selected_scheme, solver
         CHARACTER(LEN=256)              :: arg, frame_dir
         
+        ! Command-line driver for one scheme, all schemes, and boundary comparisons.
         !Number of ghost cells
         ng = 3
         grid_physical = 100
@@ -1303,6 +1400,7 @@ MODULE subroutines
         target_tfinal = 0.5d0
 
         arg_count = COMMAND_ARGUMENT_COUNT()
+        ! Optional arguments: scheme, physical grid, snapshots, frame dir, final time, BC.
         IF (arg_count >= 1) THEN
             CALL GET_COMMAND_ARGUMENT(1, arg)
             selected_scheme = ADJUSTL(arg(1:MIN(4, LEN_TRIM(arg))))
@@ -1325,6 +1423,11 @@ MODULE subroutines
             READ(arg, *, IOSTAT=ios) target_tfinal
             IF (ios /= 0) STOP "Invalid final time argument"
         END IF
+        IF (arg_count >= 6) THEN
+            CALL GET_COMMAND_ARGUMENT(6, arg)
+            bc_mode = ADJUSTL(arg(1:MIN(4, LEN_TRIM(arg))))
+            IF (bc_mode /= "OUTF" .AND. bc_mode /= "REFL") STOP "Invalid boundary mode argument"
+        END IF
 
         IF (selected_scheme == "ALL ") THEN
             CALL run_case("TENO")
@@ -1344,6 +1447,7 @@ MODULE subroutines
             REAL(DP), ALLOCATABLE :: x(:), y(:), rho(:,:),u_x(:,:), u_y(:,:), p(:,:), c(:,:)
             REAL(DP), ALLOCATABLE :: eu(:,:,:), fh_x(:,:,:), fh_y(:,:,:)
 
+            ! Build and solve one independent scheme case.
             nx = grid_physical + 2 * ng
             ny = grid_physical + 2 * ng
             
@@ -1377,6 +1481,7 @@ MODULE subroutines
             
             snap_unit = -1
             IF (nsnap > 0) THEN
+                ! Binary density snapshots are used for animation after the solve.
                 CALL build_snapshot_paths(frame_dir, scheme, solver, nsnap, data_path, meta_path)
                 CALL write_snapshot_meta(meta_path, scheme, solver, nsnap)
                 snap_unit = 40
@@ -1384,7 +1489,7 @@ MODULE subroutines
                      ACCESS="STREAM", FORM="UNFORMATTED")
             END IF
 
-            PRINT *, "Running scheme: ", scheme, " grid: ", nx, " frames: ", nsnap
+            PRINT *, "Running scheme: ", scheme, " grid: ", nx, " frames: ", nsnap, " BC: ", bc_mode
             CALL RK3TVD(eu, cfl, ct, sharpness, rho, u_x, u_y, p, c, fh_x, fh_y, scheme, solver, nsnap, snap_unit)
             IF (snap_unit > 0) CLOSE(snap_unit)
             CALL output(x, y, rho, u_x, u_y, p, scheme, solver)
