@@ -12,9 +12,9 @@ The code compares:
 
 ## Results
 
-### 2D Riemann Problem
+### 2D Riemann Problem at t = 0.8
 
-![2D Riemann density comparison](2D%20Riemann/Euler.png)
+![2D Riemann density comparison at t = 0.8](2D%20Riemann/Euler.png)
 
 ### Sod Shock Tube
 

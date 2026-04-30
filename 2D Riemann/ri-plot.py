@@ -1,76 +1,117 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.interpolate import griddata
-import matplotlib.ticker as ticker
-import matplotlib.gridspec as gridspec
-import gc
+from matplotlib.ticker import MaxNLocator
 
-# Plot one or more 2D Riemann density fields from solver output files.
-plt.close('all')  # Close previous figures
-gc.collect()  # Force garbage collection
 
-# File paths (modify to include more files if needed)
-file_paths = [
-     "TENO_HLLC_grid_906.dat"
-    # ,"WENO_HLLC_grid_806.dat"
-    # ,"MUSC_HLLC_grid_806.dat"
+# Plot the 2D Riemann density fields used in the README.
+FRAME_DIR = Path("frames_t1p5")
+GRID_TOTAL = 806
+SNAPSHOTS = 100
+TARGET_TIME = 0.8
+
+CASES = [
+    ("TENO", "TENO", "(a)"),
+    ("WENO", "WENO-JS", "(b)"),
+    ("MUSC", "MUSCL-THINC", "(c)"),
 ]
 
-# Function to read data without pandas
-def read_file(file_path):
-    # Solver files are whitespace-delimited columns: x, y, rho, ux, uy, p.
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-        data = [list(map(float, line.split())) for line in lines]
-    return zip(*data)  # Return transposed data for easier plotting
 
-# Create figure with GridSpec for better layout control
-fig = plt.figure(figsize=(10, 6))
-gs = gridspec.GridSpec(3, 4, height_ratios=[0.04, 1, 1], width_ratios=[1, 1, 1, 0.05])  # Colorbar row is now thinner
+def read_meta(path):
+    # Metadata is a simple key=value text file paired with each binary stack.
+    meta = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line and "=" in line:
+                key, value = line.split("=", 1)
+                meta[key] = value.strip()
+    return meta
 
-fig.suptitle("2D Riemann Problem: Density Distribution", fontsize=16, y=0.98)
 
-labels = ['(a)', '(b)', '(c)']  # Labels for subplots
-contour = None  # To store the last contour for colorbar
+def snapshot_paths(scheme):
+    # Keep the figure generator in lockstep with the Fortran snapshot naming.
+    stem = f"rho_{scheme}_HLLC_grid_{GRID_TOTAL}_frames_{SNAPSHOTS}"
+    return FRAME_DIR / f"{stem}.bin", FRAME_DIR / f"{stem}.meta"
 
-for i, file_path in enumerate(file_paths):
-    x, y, density, *_ = read_file(file_path)
-    grid_size = file_path.split('_')[0].replace('.dat', '').strip()  # Extract grid size
 
-    # Map compact file prefixes to report-ready scheme names.
-    if grid_size == 'WENO':
-        grid_size = 'WENO-JS'
-    elif grid_size == "MUSC":
-        grid_size = 'MUSCL-THINC'
+def read_density_frame(scheme):
+    # Read only the frame nearest TARGET_TIME from the y-major binary stack.
+    data_path, meta_path = snapshot_paths(scheme)
+    meta = read_meta(meta_path)
+    nx_phys = int(meta["nx_phys"])
+    ny_phys = int(meta["ny_phys"])
+    nsnap = int(meta["nsnap"])
+    final_time = float(meta["tfinal"])
+    frame_index = int(round(TARGET_TIME / final_time * (nsnap - 1)))
+    frame_index = max(0, min(frame_index, nsnap - 1))
+    frame_time = final_time * frame_index / max(nsnap - 1, 1)
+    frame_size = nx_phys * ny_phys
+    offset = frame_index * frame_size * np.dtype(np.float64).itemsize
+    frame = np.memmap(data_path, dtype=np.float64, mode="r", offset=offset, shape=(ny_phys, nx_phys))
 
-    # Define grid for contouring
-    xi = np.linspace(min(x), 0.8, 1000)
-    yi = np.linspace(min(y), 0.8, 1000)
-    Xi, Yi = np.meshgrid(xi, yi)
+    xl = float(meta["xl"])
+    xr = float(meta["xr"])
+    yl = float(meta["yl"])
+    yr = float(meta["yr"])
+    x = np.linspace(xl + 0.5 * (xr - xl) / nx_phys, xr - 0.5 * (xr - xl) / nx_phys, nx_phys)
+    y = np.linspace(yl + 0.5 * (yr - yl) / ny_phys, yr - 0.5 * (yr - yl) / ny_phys, ny_phys)
+    return x, y, np.asarray(frame), frame_time
 
-    ax = fig.add_subplot(gs[1, i])  # Place in correct subplot grid position
 
-    # Interpolate density data onto the grid
-    Di = griddata((x, y), density, (Xi, Yi), method='cubic')
+def crop_to_report_window(x, y, density, crop_max=0.8):
+    # Match the report view and keep the README image focused on the interaction zone.
+    x_mask = x <= crop_max
+    y_mask = y <= crop_max
+    cropped = density[np.ix_(y_mask, x_mask)]
+    extent = [x[x_mask][0], x[x_mask][-1], y[y_mask][0], y[y_mask][-1]]
+    return cropped, extent
 
-    # Draw the density field with a grayscale palette matching the paper figures.
-    # Plot filled contour in grayscale
-    contour = ax.contourf(Xi, Yi, Di, levels=1000, cmap='gray')
 
-    # Add subplot label (a), (b), (c)
-    ax.text(0.05, 1.02, labels[i], transform=ax.transAxes, fontsize=12, fontweight='bold')
-    ax.set_title(grid_size)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
+def main():
+    loaded = []
+    final_time = None
+    for scheme, title, label in CASES:
+        x, y, density, final_time = read_density_frame(scheme)
+        cropped, extent = crop_to_report_window(x, y, density)
+        loaded.append((title, label, cropped, extent))
 
-# Create the horizontal colorbar in the top-right corner
-cax = fig.add_subplot(gs[0, 2])  # Colorbar in top-right corner
-cbar = plt.colorbar(contour, cax=cax, orientation='horizontal')
-cbar.formatter = ticker.FuncFormatter(lambda rho_tick, _: f'{rho_tick:.2f}')  # Adjust decimal places to 2
-cbar.update_ticks()
-cbar.ax.set_ylabel(r"$\rho$", rotation=0, labelpad=15, fontsize=14, verticalalignment='center')
+    vmin = min(float(np.nanmin(density)) for _, _, density, _ in loaded)
+    vmax = max(float(np.nanmax(density)) for _, _, density, _ in loaded)
 
-plt.tight_layout(rect=[0, 0, 1, 0.98])  # Leave space for the suptitle
-plt.subplots_adjust(hspace=0.3, wspace=0.3)  # Adjust spacing between plots and colorbar
-plt.savefig("Euler.png")
-plt.show()
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6), constrained_layout=True)
+    fig.suptitle(f"2D Riemann Problem: Density Distribution at t = {TARGET_TIME:.1f}", fontsize=18)
+
+    image = None
+    for ax, (title, label, density, extent) in zip(axes, loaded):
+        image = ax.imshow(
+            density,
+            origin="lower",
+            extent=extent,
+            cmap="gray",
+            vmin=vmin,
+            vmax=vmax,
+            interpolation="bilinear",
+            aspect="equal",
+        )
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.text(0.04, 1.03, label, transform=ax.transAxes, fontsize=12, fontweight="bold")
+        ax.set_xlim(extent[0], extent[1])
+        ax.set_ylim(extent[2], extent[3])
+
+    # Put the shared legend below the panels with sparse ticks to avoid label collisions.
+    colorbar = fig.colorbar(image, ax=axes, orientation="horizontal", fraction=0.08, pad=0.14)
+    colorbar.locator = MaxNLocator(nbins=6)
+    colorbar.update_ticks()
+    colorbar.ax.tick_params(labelsize=10)
+    colorbar.set_label(r"$\rho$", rotation=0, fontsize=13)
+
+    fig.savefig("Euler.png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()
