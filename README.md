@@ -22,7 +22,7 @@ The code compares:
 
 ### 2D Viscous Shock Tube
 
-![Bottom wall density comparison](2D%20Shock%20Tube/bottom_wall.png)
+![2D viscous shock-tube density-gradient comparison](2D%20Shock%20Tube/Gradient%201.png)
 
 ## Cases
 
